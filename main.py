@@ -37,7 +37,7 @@ def startup_event():
     print("Database tables created successfully!")
 
     # Populate the database with PDFs (adjust the directory path as needed)
-    pdf_directory = "/Users/aaronvelezcoronado/Projects/GitHub/DocuSearchV2/documents"  # Replace with the actual path to your PDFs
+    pdf_directory = "./documents"  # Replace with the actual path to your PDFs
     populate_database_from_pdfs(pdf_directory)
 
     print("Running backfill...")
@@ -172,7 +172,7 @@ def download_file(file_name: str):
     Endpoint to download a file by name.
     """
     decoded_file_name = unquote(file_name)
-    file_path = os.path.join("/Users/aaronvelezcoronado/Projects/GitHub/DocuSearchV2/documents", decoded_file_name)
+    file_path = os.path.join("./documents", decoded_file_name)
 
     if not os.path.exists(file_path):
         print(f"DEBUG: File not found at {file_path}")  # Log the file path for debugging
@@ -180,3 +180,4 @@ def download_file(file_name: str):
 
     print(f"DEBUG: Serving file {file_path}")  # Log successful file path
     return FileResponse(file_path, media_type="application/pdf", filename=decoded_file_name)
+

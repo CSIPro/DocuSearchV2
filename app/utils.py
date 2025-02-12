@@ -10,6 +10,11 @@ from nltk.stem import SnowballStemmer
 from app.config import SessionLocal
 from app.models import PDFFile
 
+import fitz  # PyMuPDF
+import pytesseract
+from pdf2image import convert_from_path
+from PIL import Image
+
 # Ensure NLTK resources are downloaded
 import nltk
 
@@ -21,34 +26,77 @@ STOPWORDS = set(stopwords.words('spanish'))
 
 # Initialize the Spanish stemmer
 SPANISH_STEMMER = SnowballStemmer("spanish")
+def extract_text_from_image(pdf_path):
+    text = ""
+    doc = fitz.open(pdf_path)
 
-def extract_date_from_content(content: str) -> datetime.date:
-    """
-    Extract the date from the content, handling irregular spaces, optional "de",
-    and cases where the month name is missing.
-    """
-    try:
-        # Regex to match complete dates with day, month, and year
-        match = re.search(r"(\d{1,2})\s+(?:de\s+)?(\w+)?\s+(?:de\s+)?(\d{4})", content)
-        if match:
-            day, month, year = match.groups()
-            if not month:
-                # Handle cases where the month is missing (e.g., "1 del 2014")
-                month = "enero"  # Default to January or a placeholder
-            date_str = f"{day} {month} {year}"
-            # Set locale for Spanish month names
-            locale.setlocale(locale.LC_TIME, "es_ES.UTF-8")
-            # Parse the date
-            date_obj = datetime.datetime.strptime(date_str, "%d %B %Y")
-            return date_obj.date()  # Return as a date object
-    except ValueError as e:
-        print(f"Error parsing date '{date_str}': {e}")
-    except locale.Error:
-        print("Error: Ensure your system supports Spanish locale.")
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        text += page.get_text("text")  # Extrae texto normal
+        if not text.strip():  # Si la página no tiene texto, intentar OCR
+            images = convert_from_path(pdf_path, first_page=page_num+1, last_page=page_num+1)
+            for img in images:
+                text += pytesseract.image_to_string(img, lang="spa")  # Extraer texto con OCR
+        
+    return text.strip()
 
-    # Return None if no valid date is found
-    print("No valid date found in content.")
+def extract_date_from_text(text: str) -> datetime.date:
+    
+   # Expresiones regulares
+    patrones = [
+        r"(?:EL DIA \w+\s+)?(\d{1,2}|\w+)\s+DE\s+([A-ZÁÉÍÓÚ]+)\s+DEL\s+DOS\s+MIL(?:\s+(\w+))?",  # Formato largo con "DEL DOS MIL"
+        r"(\d{1,2})\s+DE\s+([A-ZÁÉÍÓÚ]+)\s+DE\s+(\d{4})",  # Formato corto con año en 4 dígitos
+        r"(?:EL DIA \w+\s+)?(\d{1,2}|\w+)\s+DE\s+([A-ZÁÉÍÓÚ]+)\s+DE\s+DOS\s+MIL(?:\s+(\w+))?"  # Formato largo con "DE DOS MIL"
+    ]
+
+    # Buscar la primera coincidencia válida
+    match = next((re.search(pat, text, re.IGNORECASE) for pat in patrones if re.search(pat, text, re.IGNORECASE)), None)
+
+    # Si se encontró una coincidencia, imprimir los grupos
+    if match:
+        print("Fecha Exitosa")
+    else:
+        print(f"No se encontró una fecha válida en{text}")
+        
+    if match:
+        day_text, month_text, year_text = match.groups()
+    
+        # Diccionario de conversión de nombres de meses a números
+        meses = {
+            "ENERO": 1, "FEBRERO": 2, "MARZO": 3, "ABRIL": 4, "MAYO": 5, "JUNIO": 6,
+            "JULIO": 7, "AGOSTO": 8, "SEPTIEMBRE": 9, "OCTUBRE": 10, "NOVIEMBRE": 11, "DICIEMBRE": 12
+        }
+        
+        # Diccionario de conversión de números escritos a enteros
+        numeros_texto = { 
+            "PRIMERO":1,"UNO": 1, "DOS": 2, "TRES": 3, "CUATRO": 4, "CINCO": 5, "SEIS": 6, "SIETE": 7,
+            "OCHO": 8, "NUEVE": 9, "DIEZ": 10, "ONCE": 11, "DOCE": 12, "TRECE": 13,
+            "CATORCE": 14, "QUINCE": 15, "DIECISÉIS": 16, "DIECISIETE": 17, "DIECIOCHO": 18,
+            "DIECINUEVE": 19, "VEINTE": 20, "VEINTIUNO": 21, "VEINTIDÓS": 22, "VEINTITRÉS": 23,
+            "VEINTICUATRO": 24, "VEINTICINCO": 25, "VEINTISÉIS": 26, "VEINTISIETE": 27,
+            "VEINTIOCHO": 28, "VEINTINUEVE": 29, "TREINTA": 30, "TREINTA Y UNO": 31
+        }
+
+        # Convertir el mes a número
+        month = meses.get(month_text.upper())
+        
+        # Determinar el día (puede ser número o texto)
+        day = numeros_texto.get(day_text.upper(), None) if not day_text.isdigit() else int(day_text)
+
+        # Determinar el año (puede ser vacío o en texto)
+        if year_text.isdigit():
+            year = int(year_text)
+        else:
+            year = 2000 + numeros_texto.get(year_text.upper(), 0) if year_text else 2000  # Si no hay año, asumir 2000
+
+        if day and month and year:
+            # Convertir a tipo datetime.date
+            date_obj = datetime.date(year=year, month=month, day=day)
+            print(f"Fecha extraída: {date_obj}")
+            return date_obj
+    
     return None
+
 
 
 
@@ -89,6 +137,7 @@ def extract_text_from_pdf(file_path: str) -> str:
         print(f"Raw text from {file_path}:\n{raw_text[:500]}")  # Log the first 500 characters of the raw text
         if not raw_text.strip():
             print(f"No text extracted from {file_path}")
+            
             return ""
         return raw_text
     except Exception as e:
@@ -108,10 +157,16 @@ def populate_database_from_pdfs(pdf_directory: str):
 
             raw_text = extract_text_from_pdf(str(pdf_file))
             if not raw_text:
+                raw_text = extract_text_from_image(str(pdf_file))
+        
+            
+            # Si sigue sin texto, omitir el archivo
+            if not raw_text.strip():
+                print(f"No se pudo extraer texto de {pdf_file.name}. Saltando...")
                 continue
 
             preprocessed_text = preprocess_text(raw_text)
-            document_date = extract_date_from_content(raw_text)
+            document_date = extract_date_from_text(raw_text)
 
             pdf_record = PDFFile(
                 file_name=pdf_file.name,
@@ -135,7 +190,7 @@ def backfill_document_dates():
         pdf_files = db.query(PDFFile).all()
         for pdf in pdf_files:
             if not pdf.document_date:
-                document_date = extract_date_from_content(pdf.original_content)
+                document_date = extract_date_from_text(pdf.original_content)
                 if document_date:
                     pdf.document_date = document_date
         db.commit()
