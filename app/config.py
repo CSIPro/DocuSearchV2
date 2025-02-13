@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 # Database configuration
-DATABASE_URL = "postgresql://postgres@localhost/pdf_search"  # Replace with your correct database URL
+DATABASE_URL = "postgresql://postgres:KevAlanSo017@localhost/pdf_search"  # Replace with your correct database URL
 
 # Create the database engine
 engine = create_engine(DATABASE_URL)

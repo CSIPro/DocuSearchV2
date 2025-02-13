@@ -49,10 +49,10 @@ def read_root():
     return {"message": "Welcome to the University PDF Search Engine"}
 
 from sqlalchemy import or_
-
+from sqlalchemy.sql.expression import true
 @app.get("/search")
 def search_pdfs(
-    query: str = Query(..., description="Search term for PDFs"),
+    query: str = Query(None, description="Search term for PDFs"),
     exact_match: bool = Query(False, description="Search for exact matches"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(10, ge=1, le=100, description="Number of results per page"),
@@ -63,16 +63,41 @@ def search_pdfs(
     """
     Search PDFs with prioritized results: exact match, first term, and subsequent terms.
     """
-    # Split the query into terms
-    terms = query.split()
-
     # Function to apply date filters
     def apply_date_filters(query_filter):
         if start_date:
-            query_filter &= PDFFile.upload_date >= start_date
+            query_filter &= PDFFile.document_date >= start_date
         if end_date:
-            query_filter &= PDFFile.upload_date <= end_date
+            query_filter &= PDFFile.document_date <= end_date
         return query_filter
+    
+    # Si no hay query, solo buscar por fechas
+    if not query:
+        date_filter = apply_date_filters(true())  # Comenzamos con True para no afectar el filtro
+        date_results = db.query(PDFFile).filter(date_filter).all()
+
+        # Paginación
+        total_results = len(date_results)
+        paginated_results = date_results[(page - 1) * page_size: page * page_size]
+
+        return {
+            "page": page,
+            "page_size": page_size,
+            "total_results": total_results,
+            "results": [
+                {
+                    "file_name": pdf.file_name,
+                    "file_path": pdf.file_path,
+                    "snippet": "",  # No hay snippet si no hay query
+                }
+                for pdf in paginated_results
+            ],
+        }
+
+    # Split the query into terms
+    terms = query.split()
+
+    
 
     # Step 1: Exact Phrase Search
     if exact_match:
