@@ -9,12 +9,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import unquote
 from sqlalchemy import and_, or_
 
-# Initialize FastAPI app
+
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (only for development)
+    allow_origins=["http://localhost:3000", "http://10.10.130.243:3000"],  # ✅ Add your local IP
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,16 +33,16 @@ def startup_event():
     Start-up event to create database tables and populate data.
     """
     # Create tables
-    Base.metadata.create_all(bind=engine)
-    print("Database tables created successfully!")
+    # Base.metadata.create_all(bind=engine)
+    # print("Database tables created successfully!")
 
-    # Populate the database with PDFs (adjust the directory path as needed)
-    pdf_directory = "./documents"  # Replace with the actual path to your PDFs
-    populate_database_from_pdfs(pdf_directory)
+    # # Populate the database with PDFs (adjust the directory path as needed)
+    # pdf_directory = "./documents"  # Replace with the actual path to your PDFs
+    # populate_database_from_pdfs(pdf_directory)
 
-    print("Running backfill...")
-    backfill_document_dates()
-    print("Backfill complete!")
+    # print("Running backfill...")
+    # backfill_document_dates()
+    # print("Backfill complete!")
 
 @app.get("/")
 def read_root():
@@ -60,10 +60,7 @@ def search_pdfs(
     end_date: str = Query(None, description="End date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
-    """
-    Search PDFs with prioritized results: exact match, first term, and subsequent terms.
-    """
-    # Function to apply date filters
+   
     def apply_date_filters(query_filter):
         if start_date:
             query_filter &= PDFFile.document_date >= start_date
@@ -76,7 +73,6 @@ def search_pdfs(
         date_filter = apply_date_filters(true())  # Comenzamos con True para no afectar el filtro
         date_results = db.query(PDFFile).filter(date_filter).all()
 
-        # Paginación
         total_results = len(date_results)
         paginated_results = date_results[(page - 1) * page_size: page * page_size]
 
@@ -94,12 +90,10 @@ def search_pdfs(
             ],
         }
 
-    # Split the query into terms
     terms = query.split()
 
     
 
-    # Step 1: Exact Phrase Search
     if exact_match:
         exact_filter = or_(
             PDFFile.content == query,
@@ -113,7 +107,6 @@ def search_pdfs(
     exact_filter = apply_date_filters(exact_filter)
     exact_results = db.query(PDFFile).filter(exact_filter).all()
 
-    # Step 2: First Term Search
     first_term_filter = or_(
         PDFFile.content.ilike(f"%{terms[0]}%"),
         PDFFile.original_content.ilike(f"%{terms[0]}%")
@@ -121,7 +114,6 @@ def search_pdfs(
     first_term_filter = apply_date_filters(first_term_filter)
     first_term_results = db.query(PDFFile).filter(first_term_filter).all()
 
-    # Step 3: Subsequent Terms Search (if there are more than one term)
     subsequent_terms_results = []
     if len(terms) > 1:
         subsequent_terms_filter = or_(
@@ -134,23 +126,21 @@ def search_pdfs(
         subsequent_terms_filter = apply_date_filters(subsequent_terms_filter)
         subsequent_terms_results = db.query(PDFFile).filter(subsequent_terms_filter).all()
 
-    # Combine results while maintaining priority and avoiding duplicates
-    unique_results = {pdf.id: pdf for pdf in exact_results}  # Use a dict to deduplicate
+
+    unique_results = {pdf.id: pdf for pdf in exact_results}  
     for pdf in first_term_results:
         unique_results.setdefault(pdf.id, pdf)
     for pdf in subsequent_terms_results:
         unique_results.setdefault(pdf.id, pdf)
 
-    # Convert results back to a list and paginate
+  
     all_results = list(unique_results.values())
     total_results = len(all_results)
     paginated_results = all_results[(page - 1) * page_size: page * page_size]
 
-    # Generate snippets
+   
     def get_snippet(pdf: PDFFile, terms: list[str]) -> str:
-        """
-        Get a snippet containing query terms from the content or original_content.
-        """
+       
         def find_snippet(source: str, terms: list[str]) -> str:
             for term in terms:
                 index = source.lower().find(term.lower())
@@ -160,17 +150,17 @@ def search_pdfs(
                     return source[start:end]
             return None
 
-        # Try content first
+     
         snippet = find_snippet(pdf.content, terms)
         if snippet:
             return snippet
 
-        # Fallback to original_content
+
         snippet = find_snippet(pdf.original_content, terms)
         if snippet:
             return snippet
 
-        return ""  # No snippet found
+        return "" 
 
     return {
         "page": page,
@@ -193,9 +183,7 @@ def search_pdfs(
 
 @app.get("/download/{file_name}", response_class=FileResponse)
 def download_file(file_name: str):
-    """
-    Endpoint to download a file by name.
-    """
+  
     decoded_file_name = unquote(file_name)
     file_path = os.path.join("./documents", decoded_file_name)
 
