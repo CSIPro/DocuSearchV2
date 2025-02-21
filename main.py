@@ -194,3 +194,19 @@ def download_file(file_name: str):
     print(f"DEBUG: Serving file {file_path}")  # Log successful file path
     return FileResponse(file_path, media_type="application/pdf", filename=decoded_file_name)
 
+
+@app.get("/view/{file_name}")
+def view_pdf(file_name: str):
+    # Decodificar correctamente el nombre del archivo
+    decoded_file_name = unquote(file_name)
+    print(f"DEBUG: Decoded file name: {decoded_file_name}")
+
+    file_path = os.path.abspath(os.path.join("./documents", decoded_file_name))
+
+    if not os.path.exists(file_path):
+        print(f"DEBUG: File not found at {file_path}")
+        raise HTTPException(status_code=404, detail="File not found")
+
+    print(f"DEBUG: Serving file {file_path}")
+
+    return FileResponse(file_path, media_type="application/pdf", headers={"Content-Disposition": "inline"})
