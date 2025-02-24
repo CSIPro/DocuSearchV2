@@ -7,7 +7,8 @@ from app.models import PDFFile
 from app.utils import backfill_document_dates, populate_database_from_pdfs
 from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import unquote
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func
+from sqlalchemy.sql import text
 
 
 app = FastAPI()
@@ -43,6 +44,37 @@ def startup_event():
     # print("Running backfill...")
     # backfill_document_dates()
     # print("Backfill complete!")
+
+@app.get("/autocomplete")
+def autocomplete_suggestions(
+    query: str = Query(..., min_length=1),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns search term suggestions extracted from PDF content.
+    """
+    if not query:
+        return {"suggestions": []}
+
+    # Custom raw SQL query to extract words
+    sql_query = text("""
+        SELECT DISTINCT word
+        FROM (
+            SELECT unnest(string_to_array(content, ' ')) AS word
+            FROM pdf_files
+            WHERE content ILIKE :query
+        ) subquery
+        WHERE word ILIKE :query
+        LIMIT 5
+    """)
+
+
+    result = db.execute(sql_query, {"query": f"%{query}%"}).fetchall()
+
+  
+    suggestions = [row[0] for row in result]
+
+    return {"suggestions": suggestions}
 
 @app.get("/")
 def read_root():
