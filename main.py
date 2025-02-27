@@ -15,11 +15,13 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # ✅ Add your local IP
+    allow_origins=["*"],        # ✅ Add your local IP
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+#TESTING!
 
 def get_db():
     db = SessionLocal()
