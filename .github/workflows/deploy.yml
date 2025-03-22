@@ -1,0 +1,45 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+      - build/cicd
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      BRIDGE_HOSTNAME: ${{ secrets.BRIDGE_HOSTNAME }}
+      PRODUCTION_HOSTNAME: ${{ secrets.PRODUCTION_HOSTNAME }}
+      DEPLOY_USERNAME: ${{ secrets.DEPLOY_USERNAME }}
+      ENV_VARS: ${{ secrets.ENV_VARS }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Generate .env
+        run: |
+          echo "$ENV_VARS" > .env
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo -e "Host unison-bridge\n\tHostName $BRIDGE_HOSTNAME\n\tUser $DEPLOY_USERNAME\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile=/dev/null\n\tForwardAgent yes\n" > ~/.ssh/config
+          echo -e "Host unison-isi\n\tHostName $PRODUCTION_HOSTNAME\n\tUser $DEPLOY_USERNAME\n\tProxyJump unison-bridge\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile=/dev/null\n\tForwardAgent yes\n" >> ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/id_ed25519
+
+      - name: Transfer files to Production
+        run: |
+          rsync -rvz --delete --exclude="venv" ./ unison-isi:/var/www/docusearch-api
+
+      - name: SSH into production, install dependencies, and deploy
+        run: |
+          ssh unison-isi "bash -i -c 'cd /var/www/docusearch-api && source venv/bin/activate && pip install -r requirements.txt && pm2 reload docusearch-api'"
