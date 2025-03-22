@@ -23,7 +23,7 @@ jobs:
 
       - name: Generate .env
         run: |
-          echo "$ENV_VARS" > .env.local
+          echo "$ENV_VARS" > .env
 
       - name: Set up SSH
         run: |
