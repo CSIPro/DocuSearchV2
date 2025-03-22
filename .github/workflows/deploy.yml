@@ -38,7 +38,7 @@ jobs:
 
       - name: Transfer files to Production
         run: |
-          rsync -rvz --delete ./ unison-isi:/var/www/docusearch-api
+          rsync -rvz --delete --exclude="venv" ./ unison-isi:/var/www/docusearch-api
 
       - name: SSH into production, install dependencies, and deploy
         run: |
